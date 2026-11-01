@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "acoustics-platform"
+version = "0.1.0"
+description = "Advanced Acoustic Simulation and Loudspeaker Design Platform"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.21.0",
+    "scipy>=1.7.0",
+    "torch>=2.0.0",
+    "matplotlib>=3.3.0",
+    "pyvista>=0.38.0",
+    "PyQt6>=6.2.0",
+    "meshio>=5.0.0",
+]
+
+[project.scripts]
+acoustics-sim = "acoustics_platform.ui.cli:main"
+acoustics-gui = "acoustics_platform.ui.gui:run_gui"
