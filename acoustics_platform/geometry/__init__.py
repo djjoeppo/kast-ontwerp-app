@@ -7,5 +7,11 @@ from acoustics_platform.geometry.cad import (
     HornProfileGenerator,
     OCC_AVAILABLE,
 )
+from acoustics_platform.geometry.ribbon_array import RibbonArrayWaveguideGeometry
 
-__all__ = ["ParametricCADGenerator", "HornProfileGenerator", "OCC_AVAILABLE"]
+__all__ = [
+    "ParametricCADGenerator",
+    "HornProfileGenerator",
+    "OCC_AVAILABLE",
+    "RibbonArrayWaveguideGeometry",
+]

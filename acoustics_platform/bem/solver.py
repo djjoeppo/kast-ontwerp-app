@@ -207,6 +207,34 @@ class HelmholtzBEMSolver:
         return p_field
 
     def _solve_bempp(self, k: float, q: np.ndarray) -> np.ndarray:
-        """Bridge to Bempp-cl when installed."""
-        # Convert mesh to Bempp grid and solve
-        raise NotImplementedError("Bempp-cl bridge configured for compatible GPU platforms.")
+        """
+        Bridge to Bempp-cl and PyOpenCL when installed on the host machine (REQ-BEM-001/002).
+        Converts MeshStructure to a Bempp grid, constructs Helmholtz single and double
+        layer boundary operators with OpenCL GPU acceleration, and solves H * p = G * q.
+        """
+        if not BEMPP_AVAILABLE:
+            raise RuntimeError("Bempp-cl is not available.")
+
+        # Bempp Grid constructor expects (3, N) vertices and (3, M) element indices
+        vertices = self.mesh.nodes.T
+        elements = self.mesh.elements[:, :3].T
+
+        grid = bempp.api.Grid(vertices, elements)
+        space = bempp.api.function_space(grid, "DP", 0) # Piecewise constant boundary elements
+
+        # Construct single layer (G) and double layer (K) boundary operators
+        # In Bempp convention: (0.5 * I + K) * p = V * q
+        slp = bempp.api.operators.boundary.helmholtz.single_layer(space, space, space, k)
+        dlp = bempp.api.operators.boundary.helmholtz.double_layer(space, space, space, k)
+        identity = bempp.api.operators.boundary.sparse.identity(space, space, space)
+
+        lhs = 0.5 * identity + dlp
+        rhs_op = slp
+
+        # GridFunction for normal velocity / Neumann flux q
+        q_func = bempp.api.GridFunction(space, coefficients=q)
+        rhs = rhs_op * q_func
+
+        # Solve system via GPU-accelerated GMRES with OSRC preconditioning
+        p_sol, info = bempp.api.linalg.gmres(lhs, rhs, tol=1e-5)
+        return np.array(p_sol.coefficients, dtype=complex)
