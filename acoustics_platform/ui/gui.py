@@ -44,6 +44,9 @@ from acoustics_platform.models import (
     EnclosureType,
     PortGeometry,
 )
+from acoustics_platform.ui.gui_viewer import Layout3DColorMapper
+from acoustics_platform.geometry.assembly_parser import MultiComponentAssemblyParser
+from acoustics_platform.geometry.constraints import ClearanceEngine, InternalBrace
 from acoustics_platform.lem import LEMSolver, LEMAlignmentSynthesizer
 from acoustics_platform.geometry import ParametricCADGenerator
 from acoustics_platform.mesh import MeshDiscretizationEngine
@@ -255,22 +258,17 @@ class AcousticsAppWindow(QMainWindow):
             # Update 3D PyVista Viewport if available
             if self.plotter_3d is not None and PYVISTA_AVAILABLE:
                 try:
-                    cad = ParametricCADGenerator(enclosure)
-                    mesh = cad.generate_surface_mesh(target_elem_size=0.08)
-                    n_cells = len(mesh.elements)
-                    cells = np.hstack([[3, elem[0], elem[1], elem[2]] for elem in mesh.elements])
-                    pv_mesh = pv.PolyData(mesh.nodes, cells)
-
-                    # Synthesize acoustic pressure pattern across cabinet
-                    p_fake = np.zeros(n_cells)
-                    if "diaphragm" in mesh.physical_tags:
-                        p_fake[mesh.physical_tags["diaphragm"]] = 95.0
-                    if "port" in mesh.physical_tags:
-                        p_fake[mesh.physical_tags["port"]] = 90.0
-                    pv_mesh.cell_data["SPL_dB"] = p_fake
+                    comps = MultiComponentAssemblyParser.create_synthetic_driver_assembly(
+                        "ActiveDriver", driver, center_position=(0.0, 0.0, enclosure.external_depth / 2.0)
+                    )
+                    brace = InternalBrace("CabinetBrace", (0.0, -0.10, 0.0), (enclosure.internal_width * 0.8, 0.02, 0.08))
+                    engine_c = ClearanceEngine()
+                    rep = engine_c.check_layout(enclosure, comps, [brace])
 
                     self.plotter_3d.clear()
-                    self.plotter_3d.add_mesh(pv_mesh, scalars="SPL_dB", cmap="plasma", show_edges=True)
+                    Layout3DColorMapper.build_colored_actors(
+                        self.plotter_3d, enclosure, comps, [brace], rep
+                    )
                     self.plotter_3d.view_isometric()
                     self.plotter_3d.render()
                 except Exception:
