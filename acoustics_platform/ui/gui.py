@@ -153,23 +153,42 @@ class AcousticsAppWindow(QMainWindow):
         self.canvas = FigureCanvas(self.fig)
         self.tabs.addTab(self.canvas, "Acoustic Response (SPL & Impedance)")
 
-        # Tab 2: 3D Visualization Viewport
+        # Tab 2: 3D Visualization Viewport (Fail-Safe Initialization)
         self.tab_3d = QWidget()
         layout_3d = QVBoxLayout(self.tab_3d)
-        if PYVISTAQT_AVAILABLE:
+        self.plotter_3d = None
+
+        if PYVISTAQT_AVAILABLE and PYVISTA_AVAILABLE:
             try:
-                self.plotter_3d = QtInteractor(self.tab_3d)
-                layout_3d.addWidget(self.plotter_3d.interactor)
-            except Exception:
+                # Attempt to initialize QtInteractor safely
+                interactor_widget = QtInteractor(self.tab_3d)
+                # Verify interactor initialization succeeded
+                if hasattr(interactor_widget, "interactor"):
+                    layout_3d.addWidget(interactor_widget.interactor)
+                    self.plotter_3d = interactor_widget
+                else:
+                    raise RuntimeError("QtInteractor did not provide an interactor widget.")
+            except Exception as e:
+                # Rule 1: Fail-safe fallback. Never crash the main application.
                 self.plotter_3d = None
-                self.label_3d_info = QLabel("3D Surface Acoustic Field (PyVista/VTK Rendering)")
-                self.label_3d_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                layout_3d.addWidget(self.label_3d_info)
+                print(f"[AcousticsPlatform] 3D Viewer initialization failed gracefully: {e}")
+                fallback_label = QLabel(
+                    "3D Visualisatie niet beschikbaar op deze grafische interface.\n"
+                    f"Status: {e}\n\n"
+                    "De rest van de applicatie (LEM-simulatie, akoestische parameters, "
+                    "optimalisatie en grafieken) functioneert normaal."
+                )
+                fallback_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                fallback_label.setStyleSheet("color: #546e7a; font-size: 13px; padding: 20px;")
+                layout_3d.addWidget(fallback_label)
         else:
-            self.plotter_3d = None
-            self.label_3d_info = QLabel("3D Surface Acoustic Field (PyVista/VTK Rendering)")
-            self.label_3d_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            layout_3d.addWidget(self.label_3d_info)
+            fallback_label = QLabel(
+                "3D Visualisatie module (PyVista/PyVistaQt) is niet geladen.\n"
+                "De akoestische simulaties en grafieken functioneren volledig."
+            )
+            fallback_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            fallback_label.setStyleSheet("color: #546e7a; font-size: 13px; padding: 20px;")
+            layout_3d.addWidget(fallback_label)
 
         self.tabs.addTab(self.tab_3d, "3D CAD & Field Viewport")
 
@@ -255,7 +274,7 @@ class AcousticsAppWindow(QMainWindow):
             self.fig.tight_layout()
             self.canvas.draw()
 
-            # Update 3D PyVista Viewport if available
+            # Rule 2: Waterdichte foutafvanging bij het inladen en renderen van 3D-componenten
             if self.plotter_3d is not None and PYVISTA_AVAILABLE:
                 try:
                     comps = MultiComponentAssemblyParser.create_synthetic_driver_assembly(
@@ -271,11 +290,16 @@ class AcousticsAppWindow(QMainWindow):
                     )
                     self.plotter_3d.view_isometric()
                     self.plotter_3d.render()
-                except Exception:
-                    pass
+                except Exception as err_3d:
+                    # Log gracefully to status bar / console without halting the app
+                    print(f"[AcousticsPlatform] 3D render warning: {err_3d}")
+                    self.status.showMessage(f"Simulatie voltooid (3D rendering opmerking: {err_3d})")
+                    return
 
             self.status.showMessage("Simulation completed successfully.")
         except Exception as e:
+            print(f"[AcousticsPlatform] Simulation error: {e}")
+            self.status.showMessage(f"Fout tijdens simulatie: {e}")
             QMessageBox.critical(self, "Simulation Error", str(e))
 
 
